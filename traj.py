@@ -165,8 +165,9 @@ def _():
     robot0_m = 2
     x0_m = robot0_m + 0.1  # initial x position
     y0_m = 0.2  # initial y position
+    hub_height_m = 1.83  # 72 inches
     v0_mps_slider = mo.ui.slider(value=8, start=1, stop=10, step=0.1, show_value=True)  # initial speed (m/s)
-    theta0_rad_slider = mo.ui.slider(value=80, start=0, stop=90, step=0.1, show_value=True)  # initial launch angle (radians)
+    theta0_rad_slider = mo.ui.slider(value=76, start=0, stop=90, step=0.1, show_value=True)  # initial launch angle (radians)
     mo.hstack([
         mo.vstack([
             mo.md("Initial speed (m/s)"),
@@ -183,6 +184,7 @@ def _():
         cd,
         g_mps2,
         go,
+        hub_height_m,
         m_kg,
         mo,
         np,
@@ -211,6 +213,7 @@ def _(
     field_figure,
     g_mps2,
     go,
+    hub_height_m,
     np,
     robot0_m,
     x0_dot_mps,
@@ -218,10 +221,11 @@ def _(
     y0_dot_mps,
     y0_m,
 ):
-    # With an analytical solution, we can calculate exactly when the ball will reach 0 again
-
-    # Since c_4 = y_0 = 0, y(t) = t (-1/2gt + y0_dot)
-    tf_s = 2*y0_dot_mps/g_mps2
+    # With an analytical solution, we can calculate exactly when the ball will reach the hub height of 72 inches (1.83 meters)
+    a = -1/2*g_mps2
+    b = y0_dot_mps
+    c = y0_m - hub_height_m
+    tf_s = (-b - np.sqrt(b**2 - 4*a*c))/(2*a)
 
     t_s = np.linspace(0, tf_s, 10000)
     x_m = x0_m + x0_dot_mps * t_s
@@ -333,6 +337,7 @@ def _(
     S_m2,
     cd,
     g_mps2,
+    hub_height_m,
     m_kg,
     np,
     rho_kgpm3,
@@ -360,7 +365,7 @@ def _(
     t_span_s = (0, 3)  # simulate for a couple seconds
     t_eval_s = np.linspace(t_span_s[0], t_span_s[1], 1000)
     # Solve the ODE
-    hits_ground = lambda t_s, X: X[1]  # event function to stop integration when y=0 (hits the ground)
+    hits_ground = lambda t_s, X: X[1] - hub_height_m   # event function to stop integration when y=0 (hits the ground)
     hits_ground.terminal = True
     hits_ground.direction = -1  # To trigger the logic only when hitting the ground and now when launching
     solution = solve_ivp(eoms, t_span_s, initial_conditions, t_eval=t_eval_s, events=hits_ground)
