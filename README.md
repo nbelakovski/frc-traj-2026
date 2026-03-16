@@ -10,3 +10,5 @@ An example of the final result:
 
 ![](traj.png)
 
+To explore further, run the traj.py script with marimo and uv, i.e. `uvx marimo edit traj.py`
+
