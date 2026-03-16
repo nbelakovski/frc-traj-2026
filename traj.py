@@ -477,6 +477,7 @@ def _(
     field_figure,
     g_mps2,
     go,
+    hub_height_m,
     m_kg,
     np,
     rho_kgpm3,
@@ -495,8 +496,10 @@ def _(
     xfudged = x0_dot_mps/a_1pm * np.exp(a_1pm*t_s) + x0_m - x0_dot_mps/a_1pm
     yfudged = (y0_dot_mps - g_mps2/a_1pm)/a_1pm * np.exp(a_1pm*t_s) + g_mps2/a_1pm*t_s + y0_m - (y0_dot_mps - g_mps2/a_1pm)/a_1pm
     fignew.add_trace(go.Scatter(x=x_m, y=y_m, mode='lines', name='Vacuum Trajectory'))
-    fignew.add_trace(go.Scatter(x=solution.y[0], y=solution.y[1], mode='lines', name='Drag Trajectory'))
-    fignew.add_trace(go.Scatter(x=xfudged, y=yfudged, mode='lines', name='Fudged Drag Trajectory'))
+    fignew.add_trace(go.Scatter(x=solution.y[0], y=solution.y[1], mode='lines', name='Numerical Drag Trajectory'))
+    # Remove some points at the end so the graph looks nicer
+    second_index_of_hub_height = np.where(yfudged > hub_height_m)[0][-1]
+    fignew.add_trace(go.Scatter(x=xfudged[:second_index_of_hub_height], y=yfudged[:second_index_of_hub_height], mode='lines', name='Linear Drag Trajectory'))
     fignew.show()
     return
 
