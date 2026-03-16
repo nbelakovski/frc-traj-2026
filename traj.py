@@ -80,8 +80,63 @@ def _(mo):
     return
 
 
-@app.cell
-def _(go, np):
+@app.cell(hide_code=True)
+def _():
+    # Imports and definitions
+    import marimo as mo
+    import plotly.graph_objects as go
+    import numpy as np
+    from scipy.integrate import solve_ivp
+    # Program constants
+    g_mps2 = 9.81
+    m_kg = 0.227
+    S_m2 = np.pi * (0.15/2)**2  # cross sectional area of a 6" ~15cm diameter ball
+    rho_kgpm3 = 1.225
+    cd = 0.5  # https://scienceworld.wolfram.com/physics/DragCoefficient.html
+    robot_length_m = 0.761
+    hub_center_m = 182.11 * 0.0254
+    y0_m = 0.2  # initial y position
+    hub_height_m = 1.83  # 72 inches
+    v0_mps_slider = mo.ui.slider(value=8, start=1, stop=10, step=0.1, show_value=True)  # initial speed (m/s)
+    theta0_rad_slider = mo.ui.slider(value=76, start=0, stop=90, step=0.1, show_value=True)  # initial launch angle (radians)
+    dist_m_slider = mo.ui.slider(value=2, start=0, stop=4, step=0.1, show_value=True)  # distance to hub (meters)
+    mo.hstack([
+        mo.vstack([
+            mo.md("Initial speed (m/s)"),
+            v0_mps_slider
+        ]),
+        mo.vstack([
+            mo.md("Initial launch angle (degrees)"),
+            theta0_rad_slider
+        ]),
+        mo.vstack([
+            mo.md("Turret center to hub center (meters)"),
+            dist_m_slider
+        ])
+    ]
+    )
+    return (
+        S_m2,
+        cd,
+        dist_m_slider,
+        g_mps2,
+        go,
+        hub_center_m,
+        hub_height_m,
+        m_kg,
+        mo,
+        np,
+        rho_kgpm3,
+        robot_length_m,
+        solve_ivp,
+        theta0_rad_slider,
+        v0_mps_slider,
+        y0_m,
+    )
+
+
+@app.cell(hide_code=True)
+def _(go, np, robot_length_m):
     def field_figure(robot_pos = 1.5):
         # Dimensions from https://firstfrc.blob.core.windows.net/frc2026/FieldAssets/2026-field-dwg-complete.pdf
         hub_center = 182.11
@@ -103,6 +158,7 @@ def _(go, np):
             (hub_center - hub_width/2 + hub_target_base_inset_left, hub_diffuser_height_left - (hub_target_base_inset_left - hub_diffuser_inset)*hub_slope),
         
             (hub_center - hub_target_width/2, 72),
+            (hub_center, 72),
             (hub_center + hub_target_width/2, 72),
         
             (hub_center + hub_width/2 - hub_target_base_inset_right, hub_diffuser_height_left - (hub_width - hub_diffuser_inset - hub_target_base_inset_right)*hub_slope),
@@ -125,12 +181,12 @@ def _(go, np):
         ]
     
         in2m = 0.0254
-    
+
         robot = np.array([
             (0, 0.1),
             (0, 0.1+3*in2m),
-            (0.761, 0.1+3*in2m),
-            (0.761, 0.1),
+            (robot_length_m, 0.1+3*in2m),
+            (robot_length_m, 0.1),
             (0, 0.1)
         ])
     
@@ -149,66 +205,19 @@ def _(go, np):
     return (field_figure,)
 
 
-@app.cell
-def _():
-    # Imports and definitions
-    import marimo as mo
-    import plotly.graph_objects as go
-    import numpy as np
-    from scipy.integrate import solve_ivp
-    # Program constants
-    g_mps2 = 9.81
-    m_kg = 0.227
-    S_m2 = np.pi * (0.15/2)**2  # cross sectional area of a 6" ~15cm diameter ball
-    rho_kgpm3 = 1.225
-    cd = 0.5  # https://scienceworld.wolfram.com/physics/DragCoefficient.html
-    robot0_m = 2
-    x0_m = robot0_m + 0.1  # initial x position
-    y0_m = 0.2  # initial y position
-    hub_height_m = 1.83  # 72 inches
-    v0_mps_slider = mo.ui.slider(value=8, start=1, stop=10, step=0.1, show_value=True)  # initial speed (m/s)
-    theta0_rad_slider = mo.ui.slider(value=76, start=0, stop=90, step=0.1, show_value=True)  # initial launch angle (radians)
-    mo.hstack([
-        mo.vstack([
-            mo.md("Initial speed (m/s)"),
-            v0_mps_slider
-        ]),
-        mo.vstack([
-            mo.md("Initial launch angle (degrees)"),
-            theta0_rad_slider
-        ])
-    ]
-    )
-    return (
-        S_m2,
-        cd,
-        g_mps2,
-        go,
-        hub_height_m,
-        m_kg,
-        mo,
-        np,
-        rho_kgpm3,
-        robot0_m,
-        solve_ivp,
-        theta0_rad_slider,
-        v0_mps_slider,
-        x0_m,
-        y0_m,
-    )
-
-
-@app.cell
-def _(np, theta0_rad_slider, v0_mps_slider):
+@app.cell(hide_code=True)
+def _(dist_m_slider, hub_center_m, np, theta0_rad_slider, v0_mps_slider):
     # Extract values from sliders
     v0_mps = v0_mps_slider.value
     theta0_rad = np.radians(theta0_rad_slider.value)
     x0_dot_mps = v0_mps * np.cos(theta0_rad)  # initial x velocity
     y0_dot_mps = v0_mps * np.sin(theta0_rad)  # initial y velocity
-    return x0_dot_mps, y0_dot_mps
+    x0_m = hub_center_m - dist_m_slider.value  # initial x position based on distance to hub
+    robot0_m = x0_m - 0.1  # position robot so that ball starts 10 cm in front of it
+    return robot0_m, x0_dot_mps, x0_m, y0_dot_mps
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     field_figure,
     g_mps2,
