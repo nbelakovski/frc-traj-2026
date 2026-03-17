@@ -98,8 +98,8 @@ def _():
     y0_m = 0.2  # initial y position
     hub_height_m = 1.83  # 72 inches
     v0_mps_slider = mo.ui.slider(value=8, start=1, stop=10, step=0.1, show_value=True)  # initial speed (m/s)
-    theta0_rad_slider = mo.ui.slider(value=76, start=0, stop=90, step=0.1, show_value=True)  # initial launch angle (radians)
-    dist_m_slider = mo.ui.slider(value=2, start=0, stop=4, step=0.1, show_value=True)  # distance to hub (meters)
+    theta0_rad_slider = mo.ui.slider(value=79, start=45, stop=90, step=0.1, show_value=True)  # initial launch angle (radians)
+    dist_m_slider = mo.ui.slider(value=2, start=0, stop=5, step=0.1, show_value=True)  # distance to hub (meters)
     mo.hstack([
         mo.vstack([
             mo.md("Initial speed (m/s)"),
@@ -237,15 +237,15 @@ def _(
     tf_s = (-b - np.sqrt(b**2 - 4*a*c))/(2*a)
 
     t_s = np.linspace(0, tf_s, 10000)
-    x_m = x0_m + x0_dot_mps * t_s
-    y_m = y0_m + y0_dot_mps * t_s - 1/2 * g_mps2 * t_s**2
+    x_m = lambda t_s: x0_m + x0_dot_mps * t_s
+    y_m = lambda t_s: y0_m + y0_dot_mps * t_s - 1/2 * g_mps2 * t_s**2
 
 
     analytical_figure = field_figure(robot_pos=robot0_m)
-    analytical_figure.add_trace(go.Scatter(x=x_m, y=y_m, mode='lines', name='Analytical Solution'))
+    analytical_figure.add_trace(go.Scatter(x=x_m(t_s), y=y_m(t_s), mode='lines', name='Analytical Solution'))
     analytical_figure.update_layout(title='Analytical solution for trajectory in a vacuum', xaxis_title='x (m)', yaxis_title='y (m)', legend_title='Legend')
     analytical_figure.show()
-    return t_s, x_m, y_m
+    return t_s, tf_s, x_m, y_m
 
 
 @app.cell(hide_code=True)
@@ -341,7 +341,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     S_m2,
     cd,
@@ -375,39 +375,80 @@ def _(
     t_eval_s = np.linspace(t_span_s[0], t_span_s[1], 1000)
     # Solve the ODE
     hits_ground = lambda t_s, X: X[1] - hub_height_m   # event function to stop integration when y=0 (hits the ground)
-    hits_ground.terminal = True
+    # hits_ground.terminal = True
     hits_ground.direction = -1  # To trigger the logic only when hitting the ground and now when launching
     solution = solve_ivp(eoms, t_span_s, initial_conditions, t_eval=t_eval_s, events=hits_ground)
+
+    # Euler forward with fixed time step
+    euler = [np.array(initial_conditions)]
+    dt_s = 0.01
+    for _ in np.arange(0, solution.t[-1] + dt_s, dt_s):
+        euler.append(euler[-1] + eoms(0, euler[-1])*dt_s)
     return (solution,)
 
 
-@app.cell
-def _(field_figure, go, robot0_m, solution, x_m, y_m):
+@app.cell(hide_code=True)
+def _(field_figure, go, hub_height_m, np, robot0_m, solution, t_s, x_m, y_m):
 
     # make a plotly plot
     fig = field_figure(robot_pos=robot0_m)
 
     # Compare to vacuum trajectory
-    fig.add_trace(go.Scatter(x=x_m, y=y_m, mode='lines', name='Vacuum Trajectory'))
+    fig.add_trace(go.Scatter(x=x_m(t_s), y=y_m(t_s), mode='lines', name='Vacuum Trajectory'))
 
     # Add drag trajectory
-    fig.add_trace(go.Scatter(x=solution.y[0], y=solution.y[1], mode='lines', name='Drag Trajectory'))
+    idx_past_hub_height = np.where(solution.y[1] > hub_height_m)[0][-1] + 1
+    fig.add_trace(go.Scatter(x=solution.y[0][:idx_past_hub_height], y=solution.y[1][:idx_past_hub_height], mode='lines', name='Drag Trajectory'))
+
+    # Add euler trajectory (uncomment when it's time to discuss how expensive euler is)
+    # fig.add_trace(go.Scatter(x=[state[0] for state in euler], y=[state[1] for state in euler], mode='lines', name=f'Euler Trajectory ({len(euler)} points)'))
 
     # Make the axes of the plot equal
     fig.update_layout(title='Trajectory of a ball with drag vs vacuum', xaxis_title='x (m)', yaxis_title='y (m)', legend_title='Legend')
     fig.show()
-    return
+    return (idx_past_hub_height,)
 
 
 @app.cell
-def _(go, np, solution, t_s, x_m, y_m):
+def _(
+    g_mps2,
+    go,
+    idx_past_hub_height,
+    np,
+    solution,
+    tf_s,
+    x_m,
+    y0_dot_mps,
+    y_m,
+):
     figerr = go.Figure()
     # plot error between numerical solution with drag and vacuum solution
-    figerr.add_trace(go.Scatter(x=solution.t, y=solution.y[0] - np.interp(solution.t, t_s, x_m), mode='lines', name='x error'))
-    figerr.add_trace(go.Scatter(x=solution.t, y=solution.y[1] - np.interp(solution.t, t_s, y_m), mode='lines', name='y error'))
-    sum_squared_errors_x = np.sum((solution.y[0] - np.interp(solution.t, t_s, x_m))**2)
-    sum_squared_errors_y = np.sum((solution.y[1] - np.interp(solution.t, t_s, x_m))**2)
-    figerr.update_layout(title=f'Error between numerical solution with drag and vacuum solution: {sum_squared_errors_x}, {sum_squared_errors_y}', xaxis_title='Time (s)', yaxis_title='Error (m)', legend_title='Legend')
+    # I need to plot x error for a given y height, so I need to normalize the time steps by time to apex for each solution.
+    time_to_apex_vacuum_s = y0_dot_mps / g_mps2
+    time_to_apex_drag_s = solution.t[np.where(solution.y[3] < 0)[0][0]]  # time when y velocity becomes negative
+
+    error_x = [0]
+    error_y = [0]
+    t_error_s = np.linspace(0, 2, 1000)
+    for t_error_si in t_error_s:
+        t_vacuum = t_error_si * time_to_apex_vacuum_s
+        t_drag = t_error_si * time_to_apex_drag_s
+        x_vacuum = x_m(t_vacuum)
+        y_vacuum = y_m(t_vacuum)
+        x_drag = np.interp(t_drag, solution.t, solution.y[0])
+        y_drag = np.interp(t_drag, solution.t, solution.y[1])
+        error_x.append(x_drag - x_vacuum)
+        error_y.append(y_drag - y_vacuum)
+
+
+    # find the time when vacuum solution enter hub_height
+    figerr.add_vline(x=tf_s/time_to_apex_vacuum_s, line_dash='dash', line_color='purple', annotation_text='Vacuum enters hub', annotation_position='top right')
+    figerr.add_vline(x=solution.t[idx_past_hub_height]/time_to_apex_drag_s, line_dash='dash', line_color='orange', annotation_text='Drag enters hub', annotation_position='top left')
+    figerr.add_trace(go.Scatter(x=t_error_s, y=error_x, mode='lines', name='x error'))
+    figerr.add_trace(go.Scatter(x=t_error_s, y=error_y, mode='lines', name='y error'))
+    sum_squared_errors_x = np.sum([error_xi**2 for error_xi in error_x])
+    sum_squared_errors_y = np.sum([error_yi**2 for error_yi in error_y])
+    figerr.update_layout(title=f'Error between numerical solution with drag and vacuum solution: SSEx: {sum_squared_errors_x:.2f}, SSEy: {sum_squared_errors_y:.2f}', xaxis_title='Time (s)', yaxis_title='Error (m)', legend_title='Legend')
     figerr.show()
     return
 
@@ -451,23 +492,33 @@ def _(mo):
 
     We've simply "dropped" the $v$ term. Now our equation is linear and we can solve it analytically.
 
-    Let's define $a = -\frac{1}{m} c_d \frac{1}{2} \rho S$ to make the notation simpler
+    Let's define $k = -\frac{1}{m} c_d \frac{1}{2} \rho S$ to make the notation simpler
 
-    $\ddot{x} = a \dot{x}$
+    $\ddot{x} = k \dot{x}$
 
-    $\dot{x}(t) = c_1 e^{at}$
+    $\dot{x}(t) = c_1 e^{kt}$
 
-    $x(t) = \frac{c_1}{a} e^{at} + c_2$
+    $x(t) = \frac{c_1}{k} e^{kt} + c_2$
 
     And for $y$
 
-    $\ddot{y} = a \dot{y} - g$
+    $\ddot{y} = k \dot{y} - g$
 
-    $\dot{y}(t) = c_3 e^{at} + \frac{g}{a}$
+    $\dot{y}(t) = c_3 e^{kt} + \frac{g}{k}$
 
-    $y(t) = \frac{c_3}{a} e^{at} + \frac{g}{a}t + c_4$
+    $y(t) = \frac{c_3}{k} e^{kt} + \frac{g}{k}t + c_4$
     """)
     return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    linear_drag_correction_factor_slider = mo.ui.slider(value=1, start=0, stop=10, step=0.1, show_value=True)
+    mo.vstack([
+        mo.md("Linear Drag Correction Factor"),
+        linear_drag_correction_factor_slider
+    ])
+    return (linear_drag_correction_factor_slider,)
 
 
 @app.cell
@@ -478,6 +529,8 @@ def _(
     g_mps2,
     go,
     hub_height_m,
+    idx_past_hub_height,
+    linear_drag_correction_factor_slider,
     m_kg,
     np,
     rho_kgpm3,
@@ -492,14 +545,14 @@ def _(
     y_m,
 ):
     fignew = field_figure(robot_pos=robot0_m)
-    a_1pm = - 1 / m_kg * cd * 0.5 * rho_kgpm3 * S_m2
-    xfudged = x0_dot_mps/a_1pm * np.exp(a_1pm*t_s) + x0_m - x0_dot_mps/a_1pm
-    yfudged = (y0_dot_mps - g_mps2/a_1pm)/a_1pm * np.exp(a_1pm*t_s) + g_mps2/a_1pm*t_s + y0_m - (y0_dot_mps - g_mps2/a_1pm)/a_1pm
-    fignew.add_trace(go.Scatter(x=x_m, y=y_m, mode='lines', name='Vacuum Trajectory'))
-    fignew.add_trace(go.Scatter(x=solution.y[0], y=solution.y[1], mode='lines', name='Numerical Drag Trajectory'))
+    k_1pm = - 1 / m_kg * cd * 0.5 * rho_kgpm3 * S_m2 * linear_drag_correction_factor_slider.value  # The last term is just a fudge factor I arrived at by playing with it to make the linear drag solution match the numerical drag solution as closely as possible. It seems to work really well over the range of initial conditions that we care about.
+    xlineardrag = x0_dot_mps/k_1pm * np.exp(k_1pm*t_s) + x0_m - x0_dot_mps/k_1pm
+    ylineardrag = (y0_dot_mps - g_mps2/k_1pm)/k_1pm * np.exp(k_1pm*t_s) + g_mps2/k_1pm*t_s + y0_m - (y0_dot_mps - g_mps2/k_1pm)/k_1pm
+    fignew.add_trace(go.Scatter(x=x_m(t_s), y=y_m(t_s), mode='lines', name='Vacuum Trajectory'))
+    fignew.add_trace(go.Scatter(x=solution.y[0][:idx_past_hub_height], y=solution.y[1][:idx_past_hub_height], mode='lines', name='Numerical Drag Trajectory'))
     # Remove some points at the end so the graph looks nicer
-    second_index_of_hub_height = np.where(yfudged > hub_height_m)[0][-1]
-    fignew.add_trace(go.Scatter(x=xfudged[:second_index_of_hub_height], y=yfudged[:second_index_of_hub_height], mode='lines', name='Linear Drag Trajectory'))
+    second_index_of_hub_height = np.where(ylineardrag > hub_height_m)[0][-1]
+    fignew.add_trace(go.Scatter(x=xlineardrag[:second_index_of_hub_height], y=ylineardrag[:second_index_of_hub_height], mode='lines', name='Linear Drag Trajectory'))
     fignew.show()
     return
 
