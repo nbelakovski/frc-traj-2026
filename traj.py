@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.20.4"
+__generated_with = "0.21.0"
 app = marimo.App(width="medium")
 
 
@@ -11,11 +11,12 @@ def _(mo):
 
     - Equations of motion for ball in a vacuum
         - Analytical solution
-        - Numerical solution
-        - Comparison of analytical vs numerical
     - Equations of motion for ball in an atmosphere
         - Numerical solution
         - Comparison vs vacuum
+    - Modified equations of motion for ball in an atmosphere
+        - Analytical solution
+        - Compare vs previous two solution
     """)
     return
 
@@ -40,10 +41,10 @@ def _(mo):
     ```
 
     - $x$ - distance traveled by the ball in the horizontal direction
-    - $\dot{x}$ - velocity of the ball in the horizontal direction (pronounced x dot)
+    - $\dot{x}, v_x$ - velocity of the ball in the horizontal direction (pronounced x dot)
     - $\ddot{x}$ - acceleration of the ball in the horizontal direction (x double dot)
-    - $y, \dot{y}, \ddot{y}$ - distance, velocity, and acceleartion of the ball in the vertical direction
-    - Equations of Motion (EOMs) - a set of differential equations desribing the translational and rotational acceleration of an object (in our case x and y accelerations)
+    - $y, (\dot{y}, v_y), \ddot{y}$ - distance, velocity, and acceleartion of the ball in the vertical direction
+    - Equations of Motion (EOMs) - a set of differential equations desribing the translational and rotational acceleration of an object (in our case $x$ and $y$ accelerations)
 
     ### Equations of motion for a ball in a vacuum
 
@@ -51,16 +52,8 @@ def _(mo):
 
 
     $\ddot{x} = 0 \newline \ddot{y} = -g$
-    """)
-    return
 
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ### Next steps: analytical and/or numerical solution
-
-    #### Analytical solution
+    ### Solving the differential equations analytically
 
     Integrate $\ddot{x}$ with respect to time to get $\dot{x}$
 
@@ -75,7 +68,18 @@ def _(mo):
     $\dot{y}(t) = -gt + c_3 \newline
     y(t) = -\frac{1}{2}gt^2 + c_3 t + c_4$
 
-    Anayltical solutions are very easy to work with
+    Our initial conditions will give us the values for these various constants
+
+    $\dot{x}(0) = c_1 = v_{x0} \newline x(0) = c_2 = x_0$
+
+    $\dot{y}(0) = c_3 = v_{y0} \newline x(0) = c_4 = y_0$
+
+    So our final analytical solution is
+
+    $x(t) = v_{x0} t + x_0 \newline y(t) = -\frac{1}{2}gt^2 + v_{y0} t + y_0$
+
+
+    Anayltical solutions are very easy to work with.
     """)
     return
 
@@ -136,6 +140,18 @@ def _():
 
 
 @app.cell(hide_code=True)
+def _(dist_m_slider, hub_center_m, np, theta0_rad_slider, v0_mps_slider):
+    # Extract values from sliders
+    v0_mps = v0_mps_slider.value
+    theta0_rad = np.radians(theta0_rad_slider.value)
+    x0_dot_mps = v0_mps * np.cos(theta0_rad)  # initial x velocity
+    y0_dot_mps = v0_mps * np.sin(theta0_rad)  # initial y velocity
+    x0_m = hub_center_m - dist_m_slider.value  # initial x position based on distance to hub
+    robot0_m = x0_m - 0.1  # position robot so that ball starts 10 cm in front of it
+    return robot0_m, x0_dot_mps, x0_m, y0_dot_mps
+
+
+@app.cell(hide_code=True)
 def _(go, np, robot_length_m):
     def field_figure(robot_pos = 1.5):
         # Dimensions from https://firstfrc.blob.core.windows.net/frc2026/FieldAssets/2026-field-dwg-complete.pdf
@@ -149,25 +165,25 @@ def _(go, np, robot_length_m):
         hub_slope = (hub_diffuser_height_left - hub_diffuser_height_right) / (hub_width - 2*hub_diffuser_inset)
         hub_target_base_inset_left = hub_diffuser_inset + 1.7
         hub_target_base_inset_right = hub_diffuser_inset + 5.38
-    
+
         hub = [
             (hub_center - hub_width/2, 0),
             (hub_center - hub_width/2, hub_base_height),
             (hub_center - hub_width/2 + hub_diffuser_inset, hub_diffuser_height_left),
-    
+
             (hub_center - hub_width/2 + hub_target_base_inset_left, hub_diffuser_height_left - (hub_target_base_inset_left - hub_diffuser_inset)*hub_slope),
-        
+
             (hub_center - hub_target_width/2, 72),
             (hub_center, 72),
             (hub_center + hub_target_width/2, 72),
-        
+
             (hub_center + hub_width/2 - hub_target_base_inset_right, hub_diffuser_height_left - (hub_width - hub_diffuser_inset - hub_target_base_inset_right)*hub_slope),
-        
+
             (hub_center + hub_width/2 - hub_diffuser_inset, 55),
             (hub_center + hub_width/2, 49.75),
             (hub_center + hub_width/2, 0),
         ]
-    
+
         tower = [
             (0, 0),
             (0, 35.125 + 1.75),
@@ -179,7 +195,7 @@ def _(go, np, robot_length_m):
             (40, 35.125),
             (0, 35.125),
         ]
-    
+
         in2m = 0.0254
 
         robot = np.array([
@@ -189,7 +205,7 @@ def _(go, np, robot_length_m):
             (robot_length_m, 0.1),
             (0, 0.1)
         ])
-    
+
         robot[:, 0] += robot_pos
 
         fig = go.Figure()
@@ -200,21 +216,9 @@ def _(go, np, robot_length_m):
         fig.update_yaxes(range=[-0.2, 4])
         return fig
 
-    
+
 
     return (field_figure,)
-
-
-@app.cell(hide_code=True)
-def _(dist_m_slider, hub_center_m, np, theta0_rad_slider, v0_mps_slider):
-    # Extract values from sliders
-    v0_mps = v0_mps_slider.value
-    theta0_rad = np.radians(theta0_rad_slider.value)
-    x0_dot_mps = v0_mps * np.cos(theta0_rad)  # initial x velocity
-    y0_dot_mps = v0_mps * np.sin(theta0_rad)  # initial y velocity
-    x0_m = hub_center_m - dist_m_slider.value  # initial x position based on distance to hub
-    robot0_m = x0_m - 0.1  # position robot so that ball starts 10 cm in front of it
-    return robot0_m, x0_dot_mps, x0_m, y0_dot_mps
 
 
 @app.cell(hide_code=True)
@@ -304,7 +308,7 @@ def _(mo):
 
     $\ddot{y} = -\frac{1}{m} c_d q S \sin(\theta) - g$
 
-    We can simplify a little bit, since $v^2\cos \theta = v v_x$
+    We can simplify a little bit, since $v^2\cos \theta = v v_x$ and $v^2\sin \theta = v v_y$
     """)
     return
 
@@ -351,8 +355,10 @@ def _(
     np,
     rho_kgpm3,
     solve_ivp,
+    tf_s,
     x0_dot_mps,
     x0_m,
+    x_m,
     y0_dot_mps,
     y0_m,
 ):
@@ -374,23 +380,37 @@ def _(
     t_span_s = (0, 3)  # simulate for a couple seconds
     t_eval_s = np.linspace(t_span_s[0], t_span_s[1], 1000)
     # Solve the ODE
-    hits_ground = lambda t_s, X: X[1] - hub_height_m   # event function to stop integration when y=0 (hits the ground)
-    # hits_ground.terminal = True
-    hits_ground.direction = -1  # To trigger the logic only when hitting the ground and now when launching
-    solution = solve_ivp(eoms, t_span_s, initial_conditions, t_eval=t_eval_s, events=hits_ground)
+    enters_hub = lambda t_s, X: X[1] - hub_height_m   # event function to stop integration when y=0 (hits the ground)
+    enters_hub.terminal = True
+    enters_hub.direction = -1  # To trigger the logic only when hitting the ground and now when launching
+    solution = solve_ivp(eoms, t_span_s, initial_conditions, t_eval=t_eval_s, events=enters_hub)
+
+    final_error_x_m = solution.y[0, -1] - x_m(tf_s)
+
+    final_time_error_s = solution.t[-1] - tf_s
 
     # Euler forward with fixed time step
     euler = [np.array(initial_conditions)]
     dt_s = 0.01
     for _ in np.arange(0, solution.t[-1] + dt_s, dt_s):
         euler.append(euler[-1] + eoms(0, euler[-1])*dt_s)
-    return (solution,)
+    return final_error_x_m, final_time_error_s, solution
 
 
 @app.cell(hide_code=True)
-def _(field_figure, go, hub_height_m, np, robot0_m, solution, t_s, x_m, y_m):
-
-    # make a plotly plot
+def _(
+    field_figure,
+    final_error_x_m,
+    final_time_error_s,
+    go,
+    hub_height_m,
+    np,
+    robot0_m,
+    solution,
+    t_s,
+    x_m,
+    y_m,
+):
     fig = field_figure(robot_pos=robot0_m)
 
     # Compare to vacuum trajectory
@@ -404,78 +424,16 @@ def _(field_figure, go, hub_height_m, np, robot0_m, solution, t_s, x_m, y_m):
     # fig.add_trace(go.Scatter(x=[state[0] for state in euler], y=[state[1] for state in euler], mode='lines', name=f'Euler Trajectory ({len(euler)} points)'))
 
     # Make the axes of the plot equal
-    fig.update_layout(title='Trajectory of a ball with drag vs vacuum', xaxis_title='x (m)', yaxis_title='y (m)', legend_title='Legend')
+    fig.update_layout(title=f'Trajectory of a ball with drag vs vacuum. Final x error: {final_error_x_m:.3f} m. Time error: {final_time_error_s:.3f} s', xaxis_title='x (m)', yaxis_title='y (m)', legend_title='Legend')
     fig.show()
     return (idx_past_hub_height,)
 
 
-@app.cell
-def _(
-    g_mps2,
-    go,
-    idx_past_hub_height,
-    np,
-    solution,
-    tf_s,
-    x_m,
-    y0_dot_mps,
-    y_m,
-):
-    figerr = go.Figure()
-    # plot error between numerical solution with drag and vacuum solution
-    # I need to plot x error for a given y height, so I need to normalize the time steps by time to apex for each solution.
-    time_to_apex_vacuum_s = y0_dot_mps / g_mps2
-    time_to_apex_drag_s = solution.t[np.where(solution.y[3] < 0)[0][0]]  # time when y velocity becomes negative
-
-    error_x = [0]
-    error_y = [0]
-    t_error_s = np.linspace(0, 2, 1000)
-    for t_error_si in t_error_s:
-        t_vacuum = t_error_si * time_to_apex_vacuum_s
-        t_drag = t_error_si * time_to_apex_drag_s
-        x_vacuum = x_m(t_vacuum)
-        y_vacuum = y_m(t_vacuum)
-        x_drag = np.interp(t_drag, solution.t, solution.y[0])
-        y_drag = np.interp(t_drag, solution.t, solution.y[1])
-        error_x.append(x_drag - x_vacuum)
-        error_y.append(y_drag - y_vacuum)
-
-
-    # find the time when vacuum solution enter hub_height
-    figerr.add_vline(x=tf_s/time_to_apex_vacuum_s, line_dash='dash', line_color='purple', annotation_text='Vacuum enters hub', annotation_position='top right')
-    figerr.add_vline(x=solution.t[idx_past_hub_height]/time_to_apex_drag_s, line_dash='dash', line_color='orange', annotation_text='Drag enters hub', annotation_position='top left')
-    figerr.add_trace(go.Scatter(x=t_error_s, y=error_x, mode='lines', name='x error'))
-    figerr.add_trace(go.Scatter(x=t_error_s, y=error_y, mode='lines', name='y error'))
-    sum_squared_errors_x = np.sum([error_xi**2 for error_xi in error_x])
-    sum_squared_errors_y = np.sum([error_yi**2 for error_yi in error_y])
-    figerr.update_layout(title=f'Error between numerical solution with drag and vacuum solution: SSEx: {sum_squared_errors_x:.2f}, SSEy: {sum_squared_errors_y:.2f}', xaxis_title='Time (s)', yaxis_title='Error (m)', legend_title='Legend')
-    figerr.show()
-    return
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## TODO: How might we add a drag term to the analytical solution?
-    """)
-    return
+    ## How might we add a drag term to the analytical solution?
 
-
-@app.cell
-def _(g_mps2, go, solution, x0_dot_mps, y0_dot_mps):
-    figvel = go.Figure()
-    # plot x and y velocity of numerical solution with drag
-    figvel.add_trace(go.Scatter(x=solution.t, y=solution.y[2] - x0_dot_mps, mode='lines', name='x velocity with drag'))
-    figvel.add_trace(go.Scatter(x=solution.t, y=solution.y[3] + g_mps2*solution.t - y0_dot_mps, mode='lines', name='y velocity with drag'))
-    figvel.show()
-    print((solution.y[2][-1] - solution.y[2][0])/(solution.t[-1] - solution.t[0]))
-    print((solution.y[3][solution.t.size//2] + g_mps2*solution.t[solution.t.size//2] - solution.y[3][0])/(solution.t[solution.t.size//2] - solution.t[0]))
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     Suppose we fudged the drag term and just made it depend on $\dot{x}$ instead of $v^2$?
 
     $\dot{X} = \begin{bmatrix}
@@ -537,6 +495,7 @@ def _(
     robot0_m,
     solution,
     t_s,
+    tf_s,
     x0_dot_mps,
     x0_m,
     x_m,
@@ -544,21 +503,20 @@ def _(
     y0_m,
     y_m,
 ):
+    from scipy.optimize import root
     fignew = field_figure(robot_pos=robot0_m)
     k_1pm = - 1 / m_kg * cd * 0.5 * rho_kgpm3 * S_m2 * linear_drag_correction_factor_slider.value  # The last term is just a fudge factor I arrived at by playing with it to make the linear drag solution match the numerical drag solution as closely as possible. It seems to work really well over the range of initial conditions that we care about.
-    xlineardrag = x0_dot_mps/k_1pm * np.exp(k_1pm*t_s) + x0_m - x0_dot_mps/k_1pm
-    ylineardrag = (y0_dot_mps - g_mps2/k_1pm)/k_1pm * np.exp(k_1pm*t_s) + g_mps2/k_1pm*t_s + y0_m - (y0_dot_mps - g_mps2/k_1pm)/k_1pm
+    xlineardrag = lambda t_s: x0_dot_mps/k_1pm * np.exp(k_1pm*t_s) + x0_m - x0_dot_mps/k_1pm
+    ylineardrag = lambda t_s: (y0_dot_mps - g_mps2/k_1pm)/k_1pm * np.exp(k_1pm*t_s) + g_mps2/k_1pm*t_s + y0_m - (y0_dot_mps - g_mps2/k_1pm)/k_1pm
+    linear_drag_tf_s = root(lambda t: ylineardrag(t) - hub_height_m, tf_s).x[0]
+    linear_drag_t_s = np.linspace(0, linear_drag_tf_s, 10000)
+    linear_drag_final_x_error_m = solution.y[0, -1] - xlineardrag(linear_drag_tf_s)
+    linear_drag_final_time_error_s =  solution.t[-1] - linear_drag_tf_s
     fignew.add_trace(go.Scatter(x=x_m(t_s), y=y_m(t_s), mode='lines', name='Vacuum Trajectory'))
     fignew.add_trace(go.Scatter(x=solution.y[0][:idx_past_hub_height], y=solution.y[1][:idx_past_hub_height], mode='lines', name='Numerical Drag Trajectory'))
-    # Remove some points at the end so the graph looks nicer
-    second_index_of_hub_height = np.where(ylineardrag > hub_height_m)[0][-1]
-    fignew.add_trace(go.Scatter(x=xlineardrag[:second_index_of_hub_height], y=ylineardrag[:second_index_of_hub_height], mode='lines', name='Linear Drag Trajectory'))
+    fignew.add_trace(go.Scatter(x=xlineardrag(linear_drag_t_s), y=ylineardrag(linear_drag_t_s), mode='lines', name='Linear Drag Trajectory'))
+    fignew.update_layout(title=f'Trajectory of a ball with linear drag vs standard drag vs vacuum. <br>Linear drag final x error: {linear_drag_final_x_error_m:.3f} m, Linear drag final time error: {linear_drag_final_time_error_s:.3f} s', xaxis_title='x (m)', yaxis_title='y (m)', legend_title='Legend')
     fignew.show()
-    return
-
-
-@app.cell
-def _():
     return
 
 
