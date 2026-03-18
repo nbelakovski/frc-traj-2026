@@ -9,6 +9,20 @@ def _(mo):
     mo.md(r"""
     # Trajectory modeling for FRC Rebuilt 2026
 
+    ## https://github.com/nbelakovski/frc-traj-2026
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.image("public/mapofmathematics.jpg", width="100%")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     - Equations of motion for ball in a vacuum
         - Analytical solution
     - Equations of motion for ball in an atmosphere
@@ -17,6 +31,8 @@ def _(mo):
     - Modified equations of motion for ball in an atmosphere
         - Analytical solution
         - Compare vs previous two solution
+
+    ---
     """)
     return
 
@@ -24,6 +40,8 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ---
+
     ## Equations of Motions (EOMs) for a ball in a vacuum
 
     ### Drawing and definitions
@@ -72,12 +90,18 @@ def _(mo):
 
     $\dot{x}(0) = c_1 = v_{x0} \newline x(0) = c_2 = x_0$
 
-    $\dot{y}(0) = c_3 = v_{y0} \newline x(0) = c_4 = y_0$
+    $\dot{y}(0) = c_3 = v_{y0} \newline y(0) = c_4 = y_0$
 
     So our final analytical solution is
 
-    $x(t) = v_{x0} t + x_0 \newline y(t) = -\frac{1}{2}gt^2 + v_{y0} t + y_0$
-
+    $$
+        \boxed{
+            \begin{array}{rcc}
+            x(t) &=& v_{x0} t + x_0 \\[.7em]
+            y(t) &=& -\frac{1}{2}gt^2 + v_{y0} t + y_0
+            \end{array}
+        }
+    $$
 
     Anayltical solutions are very easy to work with.
     """)
@@ -86,7 +110,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
-    # Imports and definitions
+    # Imports, constants, and sliders for initial conditions
     import marimo as mo
     import plotly.graph_objects as go
     import numpy as np
@@ -141,7 +165,7 @@ def _():
 
 @app.cell(hide_code=True)
 def _(dist_m_slider, hub_center_m, np, theta0_rad_slider, v0_mps_slider):
-    # Extract values from sliders
+    # Extract values from sliders (must be done in a separate box)
     v0_mps = v0_mps_slider.value
     theta0_rad = np.radians(theta0_rad_slider.value)
     x0_dot_mps = v0_mps * np.cos(theta0_rad)  # initial x velocity
@@ -153,6 +177,7 @@ def _(dist_m_slider, hub_center_m, np, theta0_rad_slider, v0_mps_slider):
 
 @app.cell(hide_code=True)
 def _(go, np, robot_length_m):
+    # Utility function for making the plots
     def field_figure(robot_pos = 1.5):
         # Dimensions from https://firstfrc.blob.core.windows.net/frc2026/FieldAssets/2026-field-dwg-complete.pdf
         hub_center = 182.11
@@ -255,27 +280,6 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    #### Numerical solution
-
-    Sometimes analytical solution is not available, but we still have the differential equations, and we know where we start.
-
-    If we assume the acceleration is constant over a very small slice of time, we can propagate our state and re-evalaute the differential equations.
-
-    In this case, there's nothing to re-evaluate since our DE's are constant for all time, not just a time slice, but when learning about numerical solutions it's useful to experiment on DEs with an analytical solution so you can compare the methods.
-
-    #### The simplest way to do numerical integration: Euler's method
-
-
-    $x_1 = x_0 + \dot{x}_0\Delta t \newline
-    x_2 = x_1 + \dot{x}_1\Delta t \newline
-    ...$
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
     ## EOMs for trajectory in an atmosphere
 
     ```
@@ -309,6 +313,38 @@ def _(mo):
     $\ddot{y} = -\frac{1}{m} c_d q S \sin(\theta) - g$
 
     We can simplify a little bit, since $v^2\cos \theta = v v_x$ and $v^2\sin \theta = v v_y$
+
+    $$
+        \boxed{
+            \begin{array}{rcc}
+            \ddot{x} &=& -\frac{1}{m} c_d \frac{1}{2} \rho v \dot{x} S \\[.7em]
+            \ddot{y} &=& -\frac{1}{m} c_d \frac{1}{2} \rho v \dot{y} S - g
+            \end{array}
+        }
+    $$
+
+    Where $v = \sqrt{\dot{x}^2 + \dot{y}^2}$
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    #### Numerical solution
+
+    Sometimes analytical solution is not available, but we still have the differential equations, and we know where we start.
+
+    If we assume the acceleration is constant over a very small slice of time, we can propagate our state and re-evalaute the differential equations.
+
+    #### The simplest way to do numerical integration: Euler's method
+
+
+    $x_1 = x_0 + \dot{x}_0\Delta t \newline
+    x_2 = x_1 + \dot{x}_1\Delta t \newline
+    ...$
+
+    This requires us to rearrange our equations in a form like $\dot{X} = f(t, X)$ where $X$ is a "state vector" consisting of all of our states.
     """)
     return
 
@@ -341,6 +377,9 @@ def _(mo):
                -\frac{1}{m} c_d \frac{1}{2} \rho S v v_x \\
                -\frac{1}{m} c_d \frac{1}{2} \rho S v v_y - g
              \end{bmatrix}$
+
+
+    Numerical integration can be a computationally expensive process, i.e. not suitable for a roboRio.
     """)
     return
 
@@ -391,7 +430,7 @@ def _(
 
     # Euler forward with fixed time step
     euler = [np.array(initial_conditions)]
-    dt_s = 0.01
+    dt_s = 0.001
     for _ in np.arange(0, solution.t[-1] + dt_s, dt_s):
         euler.append(euler[-1] + eoms(0, euler[-1])*dt_s)
     return final_error_x_m, final_time_error_s, solution
@@ -421,7 +460,7 @@ def _(
     fig.add_trace(go.Scatter(x=solution.y[0][:idx_past_hub_height], y=solution.y[1][:idx_past_hub_height], mode='lines', name='Drag Trajectory'))
 
     # Add euler trajectory (uncomment when it's time to discuss how expensive euler is)
-    # fig.add_trace(go.Scatter(x=[state[0] for state in euler], y=[state[1] for state in euler], mode='lines', name=f'Euler Trajectory ({len(euler)} points)'))
+    # fig.add_trace(go.Scatter(x=[state[0] for state in euler], y=[state[1] for state in euler], mode='lines', name=f'Drag Trajectory via <br>Euler integration ({len(euler)} points)'))
 
     # Make the axes of the plot equal
     fig.update_layout(title=f'Trajectory of a ball with drag vs vacuum. Final x error: {final_error_x_m:.3f} m. Time error: {final_time_error_s:.3f} s', xaxis_title='x (m)', yaxis_title='y (m)', legend_title='Legend')
@@ -444,8 +483,8 @@ def _(mo):
              \end{bmatrix} = \begin{bmatrix}
                \dot{x} \\
                \dot{y} \\
-               -\frac{1}{m} c_d \frac{1}{2} \rho S v_x \\
-               -\frac{1}{m} c_d \frac{1}{2} \rho S v_y - g
+               -\frac{1}{m} c_d \frac{1}{2} \rho S \dot{x} \\
+               -\frac{1}{m} c_d \frac{1}{2} \rho S \dot{y} - g
              \end{bmatrix}$
 
     We've simply "dropped" the $v$ term. Now our equation is linear and we can solve it analytically.
@@ -465,6 +504,25 @@ def _(mo):
     $\dot{y}(t) = c_3 e^{kt} + \frac{g}{k}$
 
     $y(t) = \frac{c_3}{k} e^{kt} + \frac{g}{k}t + c_4$
+
+    Again, initial conditions will give us the values for these various constants
+
+    $\dot{x}(0) = c_1 = v_{x0} \newline
+    x(0) = \frac{c_1}{k} + c_2 = x_0 \implies c_2 = x_0 - \frac{v_{x0}}{k}$
+
+    $\dot{y}(0) = c_3 + \frac{g}{k} = v_{y0} \implies c_3 = v_{y0} - \frac{g}{k} \newline
+    y(0) = \frac{c_3}{k} + c_4 = y_0 \implies c_4 = y_0 - \frac{v_{y0} - \frac{g}{k}}{k}$
+
+    So our final analytical solution is
+
+    $$
+        \boxed{
+            \begin{array}{rcc}
+            x(t) &=& \frac{v_{x0}}{k} e^{kt} + x_0 - \frac{v_{x0}}{k} \\[.7em]
+            y(t) &=& \frac{v_{y0} - \frac{g}{k}}{k} e^{kt} + \frac{g}{k}t + y_0 - \frac{v_{y0} - \frac{g}{k}}{k}
+            \end{array}
+        }
+    $$
     """)
     return
 
@@ -517,6 +575,14 @@ def _(
     fignew.add_trace(go.Scatter(x=xlineardrag(linear_drag_t_s), y=ylineardrag(linear_drag_t_s), mode='lines', name='Linear Drag Trajectory'))
     fignew.update_layout(title=f'Trajectory of a ball with linear drag vs standard drag vs vacuum. <br>Linear drag final x error: {linear_drag_final_x_error_m:.3f} m, Linear drag final time error: {linear_drag_final_time_error_s:.3f} s', xaxis_title='x (m)', yaxis_title='y (m)', legend_title='Legend')
     fignew.show()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    <p style="text-align: center; font-size: 42px; margin: 0; padding: 0"><span style="font-weight: 1000; text-decoration: underline">ALL</span> models are <span style="color: orangered">wrong</span><br><span style="font-style: italic; text-decoration: underline">Some</span> models are <span style="color: blue">useful</p>
+    """)
     return
 
 
