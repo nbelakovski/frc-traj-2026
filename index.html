@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FRC Trajectory Simulator</title>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    .controls {
+      display: flex;
+      gap: 30px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 200px;
+    }
+    .slider-group label {
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: #555;
+    }
+    .slider-group input[type="range"] {
+      width: 180px;
+      cursor: pointer;
+    }
+    .slider-group input[type="number"] {
+      width: 80px;
+      padding: 8px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .slider-value {
+      margin-top: 5px;
+      font-size: 14px;
+      color: #666;
+    }
+    #plot {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .info {
+      margin-top: 15px;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      font-size: 14px;
+      color: #666;
+    }
+    .info strong {
+      color: #333;
+    }
+    .tof-display {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin-bottom: 20px;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .tof-item {
+      text-align: center;
+    }
+    .tof-label {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    .tof-value {
+      font-size: 28px;
+      font-weight: 600;
+    }
+    .tof-value.vacuum {
+      color: #1f77b4;
+    }
+    .tof-value.drag {
+      color: #ff7f0e;
+    }
+    .tof-unit {
+      font-size: 16px;
+      font-weight: 400;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h1>FRC Trajectory Simulator</h1>
+  
+  <div class="controls">
+    <div class="slider-group">
+      <label>Shooter Height (m)</label>
+      <input type="number" id="heightInput" min="0" max="2" step="0.01" value="0.2">
+    </div>
+    <div class="slider-group">
+      <label>Distance to Hub (m)</label>
+      <input type="range" id="distSlider" min="0" max="6" step="0.01" value="2">
+      <span class="slider-value" id="distValue">2.00 m</span>
+    </div>
+    <div class="slider-group">
+      <label>Launch Angle (°)</label>
+      <input type="range" id="angleSlider" min="45" max="90" step="0.5" value="79">
+      <span class="slider-value" id="angleValue">79.0°</span>
+    </div>
+    <div class="slider-group">
+      <label>Initial Velocity (m/s)</label>
+      <input type="range" id="velocitySlider" min="1" max="10" step="0.1" value="8">
+      <span class="slider-value" id="velocityValue">8.0 m/s</span>
+    </div>
+  </div>
+  
+  <div class="tof-display">
+    <div class="tof-item">
+      <div class="tof-label">Vacuum Time of Flight</div>
+      <div class="tof-value vacuum"><span id="vacuumTof">--</span> <span class="tof-unit">s</span></div>
+    </div>
+    <div class="tof-item">
+      <div class="tof-label">Drag Time of Flight</div>
+      <div class="tof-value drag"><span id="dragTof">--</span> <span class="tof-unit">s</span></div>
+    </div>
+  </div>
+  
+  <div id="plot"></div>
+  
+  <div class="info">
+    <strong>Legend:</strong> Blue = Vacuum trajectory (no air resistance) | Orange = Drag trajectory (numerical integration with air resistance)<br>
+    <strong>Target:</strong> Hub opening at 1.83m height (72 inches)
+  </div>
+
+  <script>
+    // Constants
+    const g_mps2 = 9.81;
+    const m_kg = 0.227;
+    const ballDiameter_m = 0.15;
+    const S_m2 = Math.PI * Math.pow(ballDiameter_m / 2, 2);
+    const rho_kgpm3 = 1.225;
+    const cd = 0.5;
+    const robot_length_m = 0.761;
+    const hub_center_m = 182.11 * 0.0254;
+    const hub_height_m = 1.83;
+    const in2m = 0.0254;
+
+    // Hub geometry (in inches, converted to meters for plotting)
+    function getHubPoints() {
+      const hub_center = 182.11;
+      const hub_width = 47;
+      const hub_target_width = 41.73;
+      const hub_diffuser_inset = (47 - 38.07) / 2;
+      const hub_base_height = 49.75;
+      const hub_diffuser_height_left = 60;
+      const hub_diffuser_height_right = 55;
+      const hub_slope = (hub_diffuser_height_left - hub_diffuser_height_right) / (hub_width - 2 * hub_diffuser_inset);
+      const hub_target_base_inset_left = hub_diffuser_inset + 1.7;
+      const hub_target_base_inset_right = hub_diffuser_inset + 5.38;
+
+      const hub = [
+        [hub_center - hub_width / 2, 0],
+        [hub_center - hub_width / 2, hub_base_height],
+        [hub_center - hub_width / 2 + hub_diffuser_inset, hub_diffuser_height_left],
+        [hub_center - hub_width / 2 + hub_target_base_inset_left, hub_diffuser_height_left - (hub_target_base_inset_left - hub_diffuser_inset) * hub_slope],
+        [hub_center - hub_target_width / 2, 72],
+        [hub_center, 72],
+        [hub_center + hub_target_width / 2, 72],
+        [hub_center + hub_width / 2 - hub_target_base_inset_right, hub_diffuser_height_left - (hub_width - hub_diffuser_inset - hub_target_base_inset_right) * hub_slope],
+        [hub_center + hub_width / 2 - hub_diffuser_inset, 55],
+        [hub_center + hub_width / 2, 49.75],
+        [hub_center + hub_width / 2, 0],
+      ];
+
+      return {
+        x: hub.map(p => p[0] * in2m),
+        y: hub.map(p => p[1] * in2m)
+      };
+    }
+
+    // Tower geometry (in inches, converted to meters)
+    function getTowerPoints() {
+      const tower = [
+        [0, 0],
+        [0, 35.125 + 1.75],
+        [40, 35.125 + 1.75],
+        [40, 72.125],
+        [43.51, 72.125],
+        [43.51, 0],
+        [40, 0],
+        [40, 35.125],
+        [0, 35.125],
+      ];
+
+      return {
+        x: tower.map(p => p[0] * in2m),
+        y: tower.map(p => p[1] * in2m)
+      };
+    }
+
+    // Vacuum trajectory (analytical solution)
+    function vacuumTrajectory(x0, y0, vx0, vy0, tf) {
+      const numPoints = 500;
+      const t = [];
+      const x = [];
+      const y = [];
+      
+      for (let i = 0; i <= numPoints; i++) {
+        const ti = (i / numPoints) * tf;
+        t.push(ti);
+        x.push(x0 + vx0 * ti);
+        y.push(y0 + vy0 * ti - 0.5 * g_mps2 * ti * ti);
+      }
+      
+      return { t, x, y };
+    }
+
+    // Calculate time when ball reaches hub height (vacuum)
+    function calcVacuumTimeToHub(y0, vy0, targetY) {
+      const a = -0.5 * g_mps2;
+      const b = vy0;
+      const c = y0 - targetY;
+      const discriminant = b * b - 4 * a * c;
+      
+      if (discriminant < 0) return null;
+      
+      const t1 = (-b + Math.sqrt(discriminant)) / (2 * a);
+      const t2 = (-b - Math.sqrt(discriminant)) / (2 * a);
+      
+      // Return the second (falling) solution
+      return Math.max(t1, t2);
+    }
+
+    // Drag trajectory (numerical integration using RK4)
+    function dragTrajectory(x0, y0, vx0, vy0, targetY) {
+      const dt = 0.001;
+      const maxTime = 5;
+      
+      let state = [x0, y0, vx0, vy0];
+      const trajectory = { t: [0], x: [x0], y: [y0] };
+      
+      function eoms(s) {
+        const vx = s[2];
+        const vy = s[3];
+        const v = Math.sqrt(vx * vx + vy * vy);
+        const q = 0.5 * rho_kgpm3;
+        const dragFactor = (1 / m_kg) * cd * q * S_m2 * v;
+        
+        return [
+          vx,
+          vy,
+          -dragFactor * vx,
+          -dragFactor * vy - g_mps2
+        ];
+      }
+      
+      // RK4 integration
+      function rk4Step(s, dt) {
+        const k1 = eoms(s);
+        const k2 = eoms(s.map((v, i) => v + 0.5 * dt * k1[i]));
+        const k3 = eoms(s.map((v, i) => v + 0.5 * dt * k2[i]));
+        const k4 = eoms(s.map((v, i) => v + dt * k3[i]));
+        
+        return s.map((v, i) => v + (dt / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]));
+      }
+      
+      let t = 0;
+      let prevY = y0;
+      
+      while (t < maxTime) {
+        state = rk4Step(state, dt);
+        t += dt;
+        
+        // Stop when ball descends below target height
+        if (prevY > targetY && state[1] <= targetY) {
+          // Interpolate to find exact crossing point
+          const frac = (prevY - targetY) / (prevY - state[1]);
+          trajectory.t.push(t - dt + frac * dt);
+          trajectory.x.push(trajectory.x[trajectory.x.length - 1] + frac * (state[0] - trajectory.x[trajectory.x.length - 1]));
+          trajectory.y.push(targetY);
+          break;
+        }
+        
+        trajectory.t.push(t);
+        trajectory.x.push(state[0]);
+        trajectory.y.push(state[1]);
+        prevY = state[1];
+        
+        // Stop if ball hits the ground
+        if (state[1] < 0) break;
+      }
+      
+      return trajectory;
+    }
+
+    function updatePlot() {
+      const dist_m = parseFloat(document.getElementById('distSlider').value);
+      const angle_deg = parseFloat(document.getElementById('angleSlider').value);
+      const v0_mps = parseFloat(document.getElementById('velocitySlider').value);
+      
+      // Update display values
+      document.getElementById('distValue').textContent = dist_m.toFixed(2) + ' m';
+      document.getElementById('angleValue').textContent = angle_deg.toFixed(1) + '°';
+      document.getElementById('velocityValue').textContent = v0_mps.toFixed(1) + ' m/s';
+      
+      // Calculate initial conditions
+      const theta_rad = angle_deg * Math.PI / 180;
+      const vx0 = v0_mps * Math.cos(theta_rad);
+      const vy0 = v0_mps * Math.sin(theta_rad);
+      const x0 = hub_center_m - dist_m;
+      const robot0 = x0 - 0.1;
+      
+      // Get vacuum trajectory
+      const y0_m = parseFloat(document.getElementById('heightInput').value) || 0.2;
+      
+      const tf_vacuum = calcVacuumTimeToHub(y0_m, vy0, hub_height_m);
+      let vacTraj = { x: [], y: [] };
+      let vacuumTofDisplay = '--';
+      if (tf_vacuum && tf_vacuum > 0) {
+        vacTraj = vacuumTrajectory(x0, y0_m, vx0, vy0, tf_vacuum);
+        vacuumTofDisplay = tf_vacuum.toFixed(3);
+      } else {
+        // Ball doesn't reach hub height - show partial trajectory
+        vacTraj = vacuumTrajectory(x0, y0_m, vx0, vy0, 2);
+      }
+      
+      // Get drag trajectory
+      const dragTraj = dragTrajectory(x0, y0_m, vx0, vy0, hub_height_m);
+      const dragTof = dragTraj.t[dragTraj.t.length - 1];
+      const dragTofDisplay = dragTraj.y[dragTraj.y.length - 1] >= hub_height_m - 0.01 ? dragTof.toFixed(3) : '--';
+      
+      // Update time of flight display
+      document.getElementById('vacuumTof').textContent = vacuumTofDisplay;
+      document.getElementById('dragTof').textContent = dragTofDisplay;
+      
+      // Robot outline
+      const robotX = [robot0, robot0, robot0 + robot_length_m, robot0 + robot_length_m, robot0];
+      const robotY = [0.1, 0.1 + 3 * in2m, 0.1 + 3 * in2m, 0.1, 0.1];
+      
+      // Update trace data
+      Plotly.restyle('plot', { x: [robotX], y: [robotY] }, 2);
+      Plotly.restyle('plot', { x: [vacTraj.x], y: [vacTraj.y] }, 3);
+      Plotly.restyle('plot', { x: [dragTraj.x], y: [dragTraj.y] }, 4);
+    }
+
+    function initPlot() {
+      const hub = getHubPoints();
+      const tower = getTowerPoints();
+      
+      const traces = [
+        // Hub (transparent red)
+        {
+          x: hub.x,
+          y: hub.y,
+          mode: 'lines',
+          line: { color: 'rgba(200, 0, 0, 0.3)', width: 2 },
+          fill: 'toself',
+          fillcolor: 'rgba(200, 0, 0, 0.1)',
+          name: 'Hub',
+          showlegend: false
+        },
+        // Tower (transparent red)
+        {
+          x: tower.x,
+          y: tower.y,
+          mode: 'lines',
+          line: { color: 'rgba(200, 0, 0, 0.3)', width: 2 },
+          fill: 'toself',
+          fillcolor: 'rgba(200, 0, 0, 0.1)',
+          name: 'Tower',
+          showlegend: false
+        },
+        // Robot (placeholder, will be updated)
+        {
+          x: [],
+          y: [],
+          mode: 'lines',
+          line: { color: 'red', width: 2 },
+          name: 'Robot',
+          showlegend: false
+        },
+        // Vacuum trajectory
+        {
+          x: [],
+          y: [],
+          mode: 'lines',
+          line: { color: '#1f77b4', width: 3 },
+          name: 'Vacuum Trajectory'
+        },
+        // Drag trajectory
+        {
+          x: [],
+          y: [],
+          mode: 'lines',
+          line: { color: '#ff7f0e', width: 3 },
+          name: 'Drag Trajectory'
+        }
+      ];
+      
+      const layout = {
+        title: 'Trajectory Comparison: Vacuum vs Drag',
+        xaxis: {
+          title: 'x (m)',
+          range: [-0.5, 6],
+          scaleanchor: 'y',
+          scaleratio: 1
+        },
+        yaxis: {
+          title: 'y (m)',
+          range: [-0.2, 4]
+        },
+        legend: {
+          x: 0.02,
+          y: 0.98,
+          bgcolor: 'rgba(255,255,255,0.8)'
+        },
+        margin: { t: 50, b: 50, l: 50, r: 50 },
+        hovermode: 'closest'
+      };
+      
+      Plotly.newPlot('plot', traces, layout, { responsive: true });
+      updatePlot();
+    }
+
+    // Event listeners
+    document.getElementById('heightInput').addEventListener('input', updatePlot);
+    document.getElementById('distSlider').addEventListener('input', updatePlot);
+    document.getElementById('angleSlider').addEventListener('input', updatePlot);
+    document.getElementById('velocitySlider').addEventListener('input', updatePlot);
+
+    // Initial plot
+    initPlot();
+  </script>
+</body>
+</html>
