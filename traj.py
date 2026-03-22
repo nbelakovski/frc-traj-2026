@@ -115,6 +115,7 @@ def _():
     import plotly.graph_objects as go
     import numpy as np
     from scipy.integrate import solve_ivp
+    from scipy.optimize import root
     # Program constants
     g_mps2 = 9.81
     m_kg = 0.227
@@ -156,6 +157,7 @@ def _():
         np,
         rho_kgpm3,
         robot_length_m,
+        root,
         solve_ivp,
         theta0_rad_slider,
         v0_mps_slider,
@@ -424,9 +426,9 @@ def _(
     enters_hub.direction = -1  # To trigger the logic only when hitting the ground and now when launching
     solution = solve_ivp(eoms, t_span_s, initial_conditions, t_eval=t_eval_s, events=enters_hub)
 
-    final_error_x_m = solution.y[0, -1] - x_m(tf_s)
+    final_error_x_m = x_m(tf_s) - solution.y[0, -1]
 
-    final_time_error_s = solution.t[-1] - tf_s
+    final_time_error_s = tf_s - solution.t[-1]
 
     # Euler forward with fixed time step
     euler = [np.array(initial_conditions)]
@@ -537,7 +539,7 @@ def _(mo):
     return (linear_drag_correction_factor_slider,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     S_m2,
     cd,
@@ -551,6 +553,7 @@ def _(
     np,
     rho_kgpm3,
     robot0_m,
+    root,
     solution,
     t_s,
     tf_s,
@@ -561,15 +564,14 @@ def _(
     y0_m,
     y_m,
 ):
-    from scipy.optimize import root
-    fignew = field_figure(robot_pos=robot0_m)
     k_1pm = - 1 / m_kg * cd * 0.5 * rho_kgpm3 * S_m2 * linear_drag_correction_factor_slider.value  # The last term is just a fudge factor I arrived at by playing with it to make the linear drag solution match the numerical drag solution as closely as possible. It seems to work really well over the range of initial conditions that we care about.
     xlineardrag = lambda t_s: x0_dot_mps/k_1pm * np.exp(k_1pm*t_s) + x0_m - x0_dot_mps/k_1pm
     ylineardrag = lambda t_s: (y0_dot_mps - g_mps2/k_1pm)/k_1pm * np.exp(k_1pm*t_s) + g_mps2/k_1pm*t_s + y0_m - (y0_dot_mps - g_mps2/k_1pm)/k_1pm
     linear_drag_tf_s = root(lambda t: ylineardrag(t) - hub_height_m, tf_s).x[0]
-    linear_drag_t_s = np.linspace(0, linear_drag_tf_s, 10000)
-    linear_drag_final_x_error_m = solution.y[0, -1] - xlineardrag(linear_drag_tf_s)
-    linear_drag_final_time_error_s =  solution.t[-1] - linear_drag_tf_s
+    linear_drag_t_s = np.linspace(0, linear_drag_tf_s, 100)
+    linear_drag_final_x_error_m = xlineardrag(linear_drag_tf_s) - solution.y[0, -1]
+    linear_drag_final_time_error_s =  linear_drag_tf_s - solution.t[-1]
+    fignew = field_figure(robot_pos=robot0_m)
     fignew.add_trace(go.Scatter(x=x_m(t_s), y=y_m(t_s), mode='lines', name='Vacuum Trajectory'))
     fignew.add_trace(go.Scatter(x=solution.y[0][:idx_past_hub_height], y=solution.y[1][:idx_past_hub_height], mode='lines', name='Numerical Drag Trajectory'))
     fignew.add_trace(go.Scatter(x=xlineardrag(linear_drag_t_s), y=ylineardrag(linear_drag_t_s), mode='lines', name='Linear Drag Trajectory'))
@@ -581,7 +583,49 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    <p style="text-align: center; font-size: 42px; margin: 0; padding: 0"><span style="font-weight: 1000; text-decoration: underline">ALL</span> models are <span style="color: orangered">wrong</span><br><span style="font-style: italic; text-decoration: underline">Some</span> models are <span style="color: blue">useful</p>
+    ## How might we use this?
+
+    ### Preparation
+    - Use time of flight and hood angle to estimate initial velocity for a given flywheel RPM, i.e. create a lookup table.
+
+    ### Usage
+    - Given distance from hub and hood angle; calculate velocity necessary to hit the center, convert to RPM, apply and shoot.
+
+    OR
+
+    - Given distance from hub and RPM; convert to velocity, calculate hood angle necessary to hit center, apply and shoot.
+
+    ### Pros vs Cons
+
+    #### Pros
+    - Super fancy pants and makes us look really smart (if it works)
+    - Works without a lookup table (except the RPM <--> Velocity lookup, so not really)
+    - Could potentially win us innovation in control award, if it works
+
+    #### Cons
+    - Very complicated, requires an optimization loop to find hood angle/velocity
+    - Not intuitive to tune
+    - No evidence that this is more accurate than lookup tables
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Conclusion and takeaways
+
+    - We explored effect of drag on a ball's trajectory
+    - Explored how to modify a model to meet our accuracy and computational requirements
+    - Discussed pros vs cons of a model-based approach vs our current empircal approach
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    <!-- <p style="text-align: center; font-size: 42px; margin: 0; padding: 0"><span style="font-weight: 1000; text-decoration: underline">ALL</span> models are <span style="color: orangered">wrong</span><br><span style="font-style: italic; text-decoration: underline">Some</span> models are <span style="color: blue">useful</p> -->
     """)
     return
 
