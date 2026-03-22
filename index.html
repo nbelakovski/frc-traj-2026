@@ -109,16 +109,56 @@
       font-weight: 400;
       color: #888;
     }
+    .advanced-panel {
+      margin-bottom: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .advanced-panel summary {
+      padding: 15px 20px;
+      cursor: pointer;
+      font-weight: 500;
+      color: #555;
+      user-select: none;
+    }
+    .advanced-panel summary:hover {
+      background: #f9f9f9;
+      border-radius: 8px;
+    }
+    .advanced-panel[open] summary {
+      border-bottom: 1px solid #eee;
+    }
+    .advanced-content {
+      display: flex;
+      gap: 30px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding: 20px;
+    }
+    .param-display {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 150px;
+    }
+    .param-display label {
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: #555;
+      font-size: 14px;
+    }
+    .param-display .value {
+      font-size: 16px;
+      color: #333;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
   <h1>FRC Trajectory Simulator</h1>
   
   <div class="controls">
-    <div class="slider-group">
-      <label>Shooter Height (m)</label>
-      <input type="number" id="heightInput" min="0" max="2" step="0.01" value="0.2">
-    </div>
     <div class="slider-group">
       <label>Distance to Hub (m)</label>
       <input type="range" id="distSlider" min="0" max="6" step="0.01" value="2">
@@ -131,10 +171,55 @@
     </div>
     <div class="slider-group">
       <label>Initial Velocity (m/s)</label>
-      <input type="range" id="velocitySlider" min="1" max="10" step="0.1" value="8">
+      <input type="range" id="velocitySlider" min="1" max="12" step="0.1" value="8">
       <span class="slider-value" id="velocityValue">8.0 m/s</span>
     </div>
   </div>
+  
+  <details class="advanced-panel">
+    <summary>Advanced Parameters</summary>
+    <div class="advanced-content">
+      <div class="slider-group">
+        <label>Ball Mass (kg)</label>
+        <input type="range" id="massSlider" min="0.1" max="0.5" step="0.001" value="0.227">
+        <span class="slider-value" id="massValue">0.227 kg</span>
+      </div>
+      <div class="slider-group">
+        <label>Drag Coefficient</label>
+        <input type="range" id="cdSlider" min="0.1" max="1.0" step="0.01" value="0.5">
+        <span class="slider-value" id="cdValue">0.50</span>
+      </div>
+      <div class="param-display">
+        <label>Air Density (ρ)</label>
+        <span class="value" id="rhoDisplay">1.225 kg/m³</span>
+      </div>
+      <div class="param-display">
+        <label>Cross-sectional Area (S)</label>
+        <span class="value" id="sDisplay">0.0177 m²</span>
+      </div>
+    </div>
+  </details>
+  
+  <details class="advanced-panel">
+    <summary>Robot Dimensions</summary>
+    <div class="advanced-content">
+      <div class="slider-group">
+        <label>Robot Length (m)</label>
+        <input type="range" id="robotLengthSlider" min="0.3" max="1.2" step="0.01" value="0.761">
+        <span class="slider-value" id="robotLengthValue">0.76 m</span>
+      </div>
+      <div class="slider-group">
+        <label>Shooter Offset from Back (m)</label>
+        <input type="range" id="shooterOffsetSlider" min="0" max="1.0" step="0.01" value="0.1">
+        <span class="slider-value" id="shooterOffsetValue">0.10 m</span>
+      </div>
+      <div class="slider-group">
+        <label>Shooter Height above ground (m)</label>
+        <input type="range" id="heightSlider" min="0" max="0.5" step="0.01" value="0.2">
+        <span class="slider-value" id="heightValue">0.20 m</span>
+      </div>
+    </div>
+  </details>
   
   <div class="tof-display">
     <div class="tof-item">
@@ -157,15 +242,19 @@
   <script>
     // Constants
     const g_mps2 = 9.81;
-    const m_kg = 0.227;
+    let m_kg = 0.227;
     const ballDiameter_m = 0.15;
     const S_m2 = Math.PI * Math.pow(ballDiameter_m / 2, 2);
     const rho_kgpm3 = 1.225;
-    const cd = 0.5;
-    const robot_length_m = 0.761;
+    let cd = 0.5;
+    let robot_length_m = 0.761;
+    let shooter_offset_m = 0.1;
     const hub_center_m = 182.11 * 0.0254;
     const hub_height_m = 1.83;
     const in2m = 0.0254;
+    
+    // Update S display on load
+    document.getElementById('sDisplay').textContent = S_m2.toFixed(4) + ' m²';
 
     // Hub geometry (in inches, converted to meters for plotting)
     function getHubPoints() {
@@ -319,22 +408,34 @@
       const dist_m = parseFloat(document.getElementById('distSlider').value);
       const angle_deg = parseFloat(document.getElementById('angleSlider').value);
       const v0_mps = parseFloat(document.getElementById('velocitySlider').value);
+      const y0_m = parseFloat(document.getElementById('heightSlider').value);
       
       // Update display values
+      document.getElementById('heightValue').textContent = y0_m.toFixed(2) + ' m';
       document.getElementById('distValue').textContent = dist_m.toFixed(2) + ' m';
       document.getElementById('angleValue').textContent = angle_deg.toFixed(1) + '°';
       document.getElementById('velocityValue').textContent = v0_mps.toFixed(1) + ' m/s';
+      
+      // Read advanced parameters
+      m_kg = parseFloat(document.getElementById('massSlider').value);
+      cd = parseFloat(document.getElementById('cdSlider').value);
+      document.getElementById('massValue').textContent = m_kg.toFixed(3) + ' kg';
+      document.getElementById('cdValue').textContent = cd.toFixed(2);
+      
+      // Read robot parameters
+      robot_length_m = parseFloat(document.getElementById('robotLengthSlider').value);
+      shooter_offset_m = parseFloat(document.getElementById('shooterOffsetSlider').value);
+      document.getElementById('robotLengthValue').textContent = robot_length_m.toFixed(2) + ' m';
+      document.getElementById('shooterOffsetValue').textContent = shooter_offset_m.toFixed(2) + ' m';
       
       // Calculate initial conditions
       const theta_rad = angle_deg * Math.PI / 180;
       const vx0 = v0_mps * Math.cos(theta_rad);
       const vy0 = v0_mps * Math.sin(theta_rad);
       const x0 = hub_center_m - dist_m;
-      const robot0 = x0 - 0.1;
+      const robot0 = x0 - shooter_offset_m;
       
       // Get vacuum trajectory
-      const y0_m = parseFloat(document.getElementById('heightInput').value) || 0.2;
-      
       const tf_vacuum = calcVacuumTimeToHub(y0_m, vy0, hub_height_m);
       let vacTraj = { x: [], y: [] };
       let vacuumTofDisplay = '--';
@@ -445,10 +546,14 @@
     }
 
     // Event listeners
-    document.getElementById('heightInput').addEventListener('input', updatePlot);
+    document.getElementById('heightSlider').addEventListener('input', updatePlot);
     document.getElementById('distSlider').addEventListener('input', updatePlot);
     document.getElementById('angleSlider').addEventListener('input', updatePlot);
     document.getElementById('velocitySlider').addEventListener('input', updatePlot);
+    document.getElementById('massSlider').addEventListener('input', updatePlot);
+    document.getElementById('cdSlider').addEventListener('input', updatePlot);
+    document.getElementById('robotLengthSlider').addEventListener('input', updatePlot);
+    document.getElementById('shooterOffsetSlider').addEventListener('input', updatePlot);
 
     // Initial plot
     initPlot();
